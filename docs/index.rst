@@ -57,6 +57,7 @@ Documentation
    features
    changelog
    HOWTO
+   utreexod
    environment
    protocol
    peer_discovery

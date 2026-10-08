@@ -48,7 +48,7 @@ import electrumx.lib.tx_dash as lib_tx_dash
 import electrumx.lib.tx_axe as lib_tx_axe
 import electrumx.server.block_processor as block_proc
 import electrumx.server.daemon as daemon
-from electrumx.server.session import (ElectrumX, DashElectrumX,
+from electrumx.server.session import (ElectrumX, UtreexodElectrumX, DashElectrumX,
                                       SmartCashElectrumX, AuxPoWElectrumX,
                                       NameIndexElectrumX, NameIndexAuxPoWElectrumX)
 
@@ -434,6 +434,33 @@ class BitcoinTestnet4(BitcoinTestnetMixin, Bitcoin):
     TX_COUNT_HEIGHT = 137_121
     TX_PER_BLOCK = 100
     RPC_PORT = 48332
+
+
+class UtreexodMixin:
+    '''Backend profile; the indexed chain and wire protocol are still Bitcoin.'''
+
+    NAME = 'Utreexod'
+    DAEMON = daemon.UtreexodDaemon
+    SESSIONCLS = UtreexodElectrumX
+    MIN_REQUIRED_DAEMON_VERSION = None
+    REQUIRED_DAEMON_INDEXES = ('txindex',)
+    ESTIMATEFEE_MODES = (None,)
+
+
+class UtreexodMainnet(UtreexodMixin, BitcoinMainnet):
+    RPC_PORT = 8334
+
+
+class UtreexodTestnet(UtreexodMixin, BitcoinTestnet3):
+    RPC_PORT = 18334
+
+
+class UtreexodRegtest(UtreexodMixin, BitcoinRegtest):
+    RPC_PORT = 18334
+
+
+class UtreexodSignet(UtreexodMixin, BitcoinSignet):
+    pass
 
 
 ######################################################################

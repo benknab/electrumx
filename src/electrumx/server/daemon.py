@@ -406,6 +406,99 @@ class Daemon:
         return self._height
 
 
+class UtreexodDaemon(Daemon):
+    '''Bitcoin RPC adapter for an archival Utreexod node with --txindex.'''
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._info_cache = (None, 0)
+        self._info_lock = asyncio.Lock()
+
+    async def _send(self, payload, processor):
+        # Utreexod requires an explicit RPC version and a params array, even
+        # for zero-argument calls. Apply this to both single and batch requests.
+        for request in payload if isinstance(payload, list) else [payload]:
+            request['jsonrpc'] = '1.0'
+            request.setdefault('params', [])
+
+        def process_response(result):
+            # Utreexod omits null error/result fields even for RPC 1.0.
+            for response in result if isinstance(result, list) else [result]:
+                response.setdefault('error', None)
+                response.setdefault('result', None)
+            return processor(result)
+
+        return await super()._send(payload, process_response)
+
+    async def getinfo(self):
+        async with self._info_lock:
+            value, timestamp = self._info_cache
+            if time.monotonic() - timestamp < 60 and value is not None:
+                return value
+            value = await self._send_single('getinfo')
+            self._info_cache = (value, time.monotonic())
+            return value
+
+    async def check_daemon_version(self):
+        # Utreexod's version numbering and capabilities are not Core's.
+        # Check the network even when reopening an existing ElectrumX database.
+        await self.getinfo()
+        genesis, = await self.block_hex_hashes(0, 1)
+        if genesis != self.coin.GENESIS_HASH:
+            raise RuntimeError('Utreexod genesis hash does not match the configured network')
+
+    async def check_daemon_indexes(self):
+        info = await self._send_single('getblockchaininfo')
+        if info['pruned']:
+            raise RuntimeError('ElectrumX requires archival Utreexod with --prune=0 --txindex')
+
+        # Utreexod has no getindexinfo. An unknown txid distinguishes a missing
+        # txindex from an enabled index, including on a fresh regtest chain.
+        unknown_txid = '00' * 32
+        try:
+            await self.getrawtransaction(unknown_txid)
+        except DaemonError as e:
+            error = e.args[0]
+            if error != {'code': -5, 'message': f'No information available about transaction {unknown_txid}'}:
+                raise RuntimeError('Cannot query Utreexod transaction index; enable --txindex') from e
+        else:
+            raise RuntimeError('Unexpected Utreexod transaction-index probe response')
+
+        # Also verify historical lookup once there is a non-genesis block.
+        if info['blocks'] > 0:
+            block_hash, = await self.block_hex_hashes(1, 1)
+            block = await self.deserialised_block(block_hash)
+            await self.getrawtransaction(block['tx'][0])
+
+    async def deserialised_block(self, bhash_hum):
+        return await self._send_single('getblock', (bhash_hum, 1))
+
+    async def raw_blocks(self, bhashes_hum):
+        blocks = await self._send_vector('getblock', ((h, 0) for h in bhashes_hum))
+        return [hex_to_bytes(block) for block in blocks]
+
+    async def relayfee(self):
+        return (await self.getinfo())['relayfee']
+
+    async def estimatefee(self, block_count):
+        # Utreexod's estimator only covers targets 1..25, in BTC/kB.
+        if not 1 <= block_count <= 25:
+            return -1
+        try:
+            return await self._send_single('estimatefee', (block_count,))
+        except DaemonError as e:
+            error = e.args[0]
+            # Utreexod 0.6's processRequest hides ordinary Go errors (including
+            # an unready estimator) behind this generic error. Our arguments
+            # above are valid; expose this estimate failure as unavailable.
+            if error == {'code': -32600, 'message': 'Invalid request: malformed'}:
+                return -1
+            if error.get('code') == -32603 and error.get('message') in (
+                    'Fee estimation disabled', 'not enough blocks have been observed'):
+                return -1
+            raise
+
+
 class DashDaemon(Daemon):
 
     async def masternode_broadcast(self, params):

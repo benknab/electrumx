@@ -19,6 +19,13 @@ arbitrary addresses. The server can be exposed publicly, and joined to the publi
 of servers via peer discovery. As of May 2020, a significant chunk of the public
 Electrum server network runs ElectrumX.
 
+### Utreexod backend
+
+This fork adds an archival Utreexod backend to ElectrumX 2.0.0. Use
+`COIN=Utreexod` with `--prune=0 --txindex` on the node. Clients use standard
+Electrum protocol 1.4–1.4.3. See the [setup and regtest guide](docs/utreexod.rst)
+for configuration, tested behavior, and remaining validation.
+
 ### Documentation
 
 See [readthedocs](https://electrumx-spesmilo.readthedocs.io).

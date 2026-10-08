@@ -2422,6 +2422,27 @@ class ElectrumX(SessionBase):
         self.notification_handlers = notif_handlers
 
 
+class UtreexodElectrumX(ElectrumX):
+    '''Standard Electrum interface for Utreexod's available RPC capabilities.'''
+
+    PROTOCOL_MAX = (1, 4, 3)
+
+    async def replaced_banner(self, banner: str) -> str:
+        info = await self.daemon_request('getinfo')
+        version = info['version']
+        # Utreexod encodes major/minor/patch as millions/ten-thousands/hundreds.
+        daemon_version = f'{version // 1_000_000}.{version // 10_000 % 100}.{version // 100 % 100}'
+        for pair in [
+                ('$SERVER_VERSION', electrumx.version_short),
+                ('$SERVER_SUBVERSION', electrumx.version),
+                ('$DAEMON_VERSION', daemon_version),
+                ('$DAEMON_SUBVERSION', f'Utreexod {daemon_version}'),
+                ('$DONATION_ADDRESS', self.env.donation_address),
+        ]:
+            banner = banner.replace(*pair)
+        return banner
+
+
 class LocalRPC(SessionBase):
     '''A local TCP RPC server session.'''
 
